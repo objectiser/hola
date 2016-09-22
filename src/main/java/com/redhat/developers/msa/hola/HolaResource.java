@@ -18,42 +18,55 @@ package com.redhat.developers.msa.hola;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import javax.inject.Inject;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.HttpHeaders;
 
 import org.apache.deltaspike.core.api.config.ConfigResolver;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-
-import com.github.kristofa.brave.Brave;
-import com.github.kristofa.brave.ServerSpan;
-import com.github.kristofa.brave.http.DefaultSpanNameProvider;
-import com.github.kristofa.brave.httpclient.BraveHttpRequestInterceptor;
-import com.github.kristofa.brave.httpclient.BraveHttpResponseInterceptor;
 
 import feign.Logger;
 import feign.Logger.Level;
-import feign.httpclient.ApacheHttpClient;
 import feign.hystrix.HystrixFeign;
 import feign.jackson.JacksonDecoder;
+import io.opentracing.Span;
+import io.opentracing.SpanContext;
+import io.opentracing.Tracer;
+import io.opentracing.propagation.Format;
+import io.opentracing.propagation.TextMap;
 import io.swagger.annotations.ApiOperation;
 
 @Path("/")
 public class HolaResource {
 
-    @Inject
-    private Brave brave;
+	@Inject
+	private Tracer tracer;
 
     @GET
     @Path("/hola")
     @Produces("text/plain")
     @ApiOperation("Returns the greeting in Spanish")
-    public String hola() {
+    public String hola(@Context HttpHeaders headers) {
+    	SpanContext spanCtx = tracer.extract(Format.Builtin.TEXT_MAP,
+                new HttpHeadersExtractAdapter(headers.getRequestHeaders()));
+
+        try (Span serverSpan = tracer.buildSpan("GET")
+                .asChildOf(spanCtx)
+                .withTag("http.url", "/api/hola")
+                .start()) {
+	        return hola();
+        }
+    }
+
+    protected String hola() {
         String hostname = System.getenv().getOrDefault("HOSTNAME", "unknown");
         String translation = ConfigResolver
             .resolve("hello")
@@ -63,18 +76,34 @@ public class HolaResource {
             .cacheFor(TimeUnit.SECONDS, 5)
             .getValue();
         return String.format(translation, hostname);
-
     }
 
     @GET
     @Path("/hola-chaining")
     @Produces("application/json")
     @ApiOperation("Returns the greeting plus the next service in the chain")
-    public List<String> holaChaining() {
-        List<String> greetings = new ArrayList<>();
-        greetings.add(hola());
-        greetings.addAll(getNextService().aloha());
-        return greetings;
+    public List<String> holaChaining(@Context HttpHeaders headers) {
+    	SpanContext spanCtx = tracer.extract(Format.Builtin.TEXT_MAP,
+                new HttpHeadersExtractAdapter(headers.getRequestHeaders()));
+
+        try (Span serverSpan = tracer.buildSpan("CalledHolaChaining")
+                .asChildOf(spanCtx)
+                .withTag("http.url", "/api/hola-chaining")
+                .start()) {
+            List<String> greetings = new ArrayList<>();
+            greetings.add(hola());
+            
+            try (Span clientSpan = tracer.buildSpan("CallAlohaChaining")
+                    .asChildOf(serverSpan)
+                    .start()) {
+                Map<String,Object> h = new HashMap<>();
+                tracer.inject(clientSpan.context(), Format.Builtin.TEXT_MAP,
+                        new HttpHeadersInjectAdapter(h));
+                greetings.addAll(getNextService().aloha(h));
+            }
+
+            return greetings;
+        }
     }
 
     @GET
@@ -93,23 +122,50 @@ public class HolaResource {
      */
     private AlohaService getNextService() {
         final String serviceName = "aloha";
-        // This stores the Original/Parent ServerSpan from ZiPkin.
-        final ServerSpan serverSpan = brave.serverSpanThreadBinder().getCurrentServerSpan();
-        final CloseableHttpClient httpclient =
-            HttpClients.custom()
-                .addInterceptorFirst(new BraveHttpRequestInterceptor(brave.clientRequestInterceptor(), new DefaultSpanNameProvider()))
-                .addInterceptorFirst(new BraveHttpResponseInterceptor(brave.clientResponseInterceptor()))
-                .build();
         String url = String.format("http://%s:8080/", serviceName);
+        AlohaService fallback = (headers) -> Collections.singletonList("Aloha response (fallback)");
         return HystrixFeign.builder()
-            // Use apache HttpClient which contains the ZipKin Interceptors
-            .client(new ApacheHttpClient(httpclient))
-            // Bind Zipkin Server Span to Feign Thread
-            .requestInterceptor((t) -> brave.serverSpanThreadBinder().setCurrentSpan(serverSpan))
             .logger(new Logger.ErrorLogger()).logLevel(Level.BASIC)
             .decoder(new JacksonDecoder())
-            .target(AlohaService.class, url,
-                () -> Collections.singletonList("Aloha response (fallback)"));
+            .target(AlohaService.class, url, fallback);
+    }
+
+    public final class HttpHeadersExtractAdapter implements TextMap {
+        private final Map<String,String> map;
+
+        public HttpHeadersExtractAdapter(final Map<String,List<String>> multiValuedMap) {
+        	// Convert to single valued map
+            this.map = new HashMap<>();
+            multiValuedMap.forEach((k,v) -> map.put(k, v.get(0)));
+        }
+
+        @Override
+        public Iterator<Map.Entry<String, String>> iterator() {
+            return map.entrySet().iterator();
+        }
+
+        @Override
+        public void put(String key, String value) {
+            throw new UnsupportedOperationException("TextMapInjectAdapter should only be used with Tracer.extract()");
+        }
+    }
+
+    public final class HttpHeadersInjectAdapter implements TextMap {
+        private final Map<String,Object> map;
+
+        public HttpHeadersInjectAdapter(final Map<String,Object> map) {
+            this.map = map;
+        }
+
+        @Override
+        public Iterator<Map.Entry<String, String>> iterator() {
+            throw new UnsupportedOperationException("TextMapInjectAdapter should only be used with Tracer.inject()");
+        }
+
+        @Override
+        public void put(String key, String value) {
+            this.map.put(key, value);
+        }
     }
 
 }

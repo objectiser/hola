@@ -56,11 +56,11 @@
 		<!-- maven-compiler-plugin -->
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<maven.compiler.source>1.8</maven.compiler.source>
-		<netflix.feign.version>8.15.1</netflix.feign.version>
+		<io.github.openfeign.version>9.3.1</io.github.openfeign.version>
 		<hystrix.version>1.5.1</hystrix.version>
 		<brave.version>3.9.1</brave.version>
 		<swagger.version>1.5.8</swagger.version>
-
+        <hawkular-apm.version>0.10.1.Final-SNAPSHOT</hawkular-apm.version>
 
 		<!-- fabric8 version -->
 		<fabric8.version>2.2.105</fabric8.version>
@@ -143,24 +143,24 @@
 		
 		<!-- Feign -->
 		<dependency>
-			<groupId>com.netflix.feign</groupId>
+			<groupId>io.github.openfeign</groupId>
 			<artifactId>feign-core</artifactId>
-			<version>${netflix.feign.version}</version>
+			<version>${io.github.openfeign.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>com.netflix.feign</groupId>
+			<groupId>io.github.openfeign</groupId>
 			<artifactId>feign-hystrix</artifactId>
-			<version>${netflix.feign.version}</version>
+			<version>${io.github.openfeign.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>com.netflix.feign</groupId>
+			<groupId>io.github.openfeign</groupId>
 			<artifactId>feign-jackson</artifactId>
-			<version>${netflix.feign.version}</version>
+			<version>${io.github.openfeign.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>com.netflix.feign</groupId>
+			<groupId>io.github.openfeign</groupId>
 			<artifactId>feign-httpclient</artifactId>
-			<version>${netflix.feign.version}</version>
+			<version>${io.github.openfeign.version}</version>
 		</dependency>
 
 
@@ -176,28 +176,6 @@
 			<version>${hystrix.version}</version>
 		</dependency>
 
-		<!-- Brave Zipkin -->
-		<dependency>
-			<groupId>io.zipkin.brave</groupId>
-			<artifactId>brave-web-servlet-filter</artifactId>
-			<version>${brave.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>io.zipkin.brave</groupId>
-			<artifactId>brave-apache-http-interceptors</artifactId>
-			<version>${brave.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>io.zipkin.brave</groupId>
-			<artifactId>brave-spancollector-http</artifactId>
-			<version>${brave.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.httpcomponents</groupId>
-			<artifactId>httpclient</artifactId>
-			<version>4.5.1</version>
-		</dependency>
-
 		<!-- Swagger -->
 		<dependency>
 			<groupId>io.swagger</groupId>
@@ -210,6 +188,18 @@
 			<version>2.1.4</version>
 		</dependency>
 
+        <!--  Hawkular APM -->
+		<dependency>
+			<groupId>org.hawkular.apm</groupId>
+			<artifactId>hawkular-apm-client-opentracing</artifactId>
+			<version>${hawkular-apm.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.hawkular.apm</groupId>
+			<artifactId>hawkular-apm-trace-publisher-rest-client</artifactId>
+			<version>${hawkular-apm.version}</version>
+		</dependency>
+        
 	</dependencies>
 
 	<build>
@@ -268,7 +258,6 @@
 								</assembly>
 								<env>
 									<JAVA_APP_JAR>${project.build.finalName}-swarm.jar</JAVA_APP_JAR>
-									<ZIPKIN_SERVER_URL>http://zipkin-query:9411</ZIPKIN_SERVER_URL>
 									<AB_OFF>true</AB_OFF>
 									<JAVA_OPTIONS>-Xmx512m</JAVA_OPTIONS>
 								</env>

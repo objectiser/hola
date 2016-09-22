@@ -16,13 +16,15 @@
  */
 package com.redhat.developers.msa.hola;
 
+import feign.HeaderMap;
 import feign.RequestLine;
 
 import java.util.List;
+import java.util.Map;
 
 public interface AlohaService {
 
 	@RequestLine("GET /api/aloha-chaining")
-	public List<String> aloha();
+	public List<String> aloha(@HeaderMap Map<String, Object> headerMap);
 
 }
